@@ -38,6 +38,24 @@ public class JwtFilter extends OncePerRequestFilter {
     private final TokenManager tokenManager;
 
     @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        String path = request.getRequestURI();
+        if (path == null) {
+            return true;
+        }
+        if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
+            return true;
+        }
+        return path.startsWith("/api/auth")
+                || path.startsWith("/auth")
+                || path.startsWith("/swagger-ui")
+                || path.startsWith("/webjars/swagger-ui")
+                || path.equals("/swagger-ui.html")
+                || path.startsWith("/v3/api-docs")
+                || path.startsWith("/actuator");
+    }
+
+    @Override
     protected void doFilterInternal(
             HttpServletRequest request,
             HttpServletResponse response,

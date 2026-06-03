@@ -1,5 +1,6 @@
 package com.example.demo.config;
 
+import com.example.demo.repository.UserRepository;
 import com.example.demo.security.AdminAccessGuard;
 import com.example.demo.security.JwtFilter;
 import com.example.demo.security.RateLimitFilter;
@@ -8,8 +9,13 @@ import com.example.demo.security.SecurityProperties;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
@@ -37,6 +43,7 @@ import java.util.List;
  */
 @Configuration
 @RequiredArgsConstructor
+@EnableWebSecurity
 public class SecurityConfig {
 
     private final JwtFilter jwtFilter;
@@ -44,6 +51,7 @@ public class SecurityConfig {
     private final RateLimitFilter rateLimitFilter;
     private final AdminAccessGuard adminAccessGuard;
     private final SecurityProperties securityProperties;
+    private final UserRepository userRepository;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -51,6 +59,8 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .httpBasic(httpBasic -> httpBasic.disable())
+                .formLogin(formLogin -> formLogin.disable())
                 .authorizeHttpRequests(auth -> auth
                         // CORS preflights must always be allowed — browsers send
                         // them without an Authorization header.
@@ -58,6 +68,7 @@ public class SecurityConfig {
 
                         // Public endpoints
                         .requestMatchers(
+                                "/api/auth",
                                 "/api/auth/**",
                                 "/auth/**",
                                 "/security/refresh",
@@ -108,6 +119,24 @@ public class SecurityConfig {
                 .addFilterAfter(adminAccessGuard, JwtFilter.class);
 
         return http.build();
+    }
+
+    @Bean
+    public UserDetailsService userDetailsService() {
+        return username -> userRepository.findByEmail(
+                        username == null ? "" : username.trim().toLowerCase())
+                .map(user -> org.springframework.security.core.userdetails.User.builder()
+                        .username(user.getEmail())
+                        .password(user.getPassword() == null ? "" : user.getPassword())
+                        .roles(user.isAdmin() ? "ADMIN" : "USER")
+                        .build())
+                .orElseThrow(() -> new UsernameNotFoundException("User not found"));
+    }
+
+    @Bean
+    public AuthenticationManager authenticationManager(AuthenticationConfiguration authConfig)
+            throws Exception {
+        return authConfig.getAuthenticationManager();
     }
 
     @Bean
