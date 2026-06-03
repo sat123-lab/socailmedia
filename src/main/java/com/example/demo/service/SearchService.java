@@ -118,7 +118,7 @@ public class SearchService {
     private List<Map<String, Object>> searchReels(String q, int n) {
         // Caption + hashtag substring across the recent window. Cheap and effective for the
         // first thousands of reels; for >1M rows route to Meilisearch via the same DTO shape.
-        List<Reel> recent = reels.findRecent(null, PageRequest.of(0, 2000));
+        List<Reel> recent = reels.findRecent(PageRequest.of(0, 2000));
         String lower = q.toLowerCase();
         List<Map<String, Object>> out = new ArrayList<>();
         for (Reel r : recent) {

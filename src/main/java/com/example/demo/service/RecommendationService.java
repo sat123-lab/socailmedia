@@ -213,7 +213,7 @@ public class RecommendationService {
         // Pull a wider candidate pool than the page size so the ranker
         // has room to actually rerank.
         int poolSize = Math.min(200, pageSize * 5);
-        List<Reel> pool = reels.findRecent(null, PageRequest.of(0, poolSize));
+        List<Reel> pool = reels.findRecent(PageRequest.of(0, poolSize));
         List<Reel> ranked = rankReels(viewerId, pool);
         return ranked.size() > pageSize
                 ? ranked.subList(0, pageSize) : ranked;

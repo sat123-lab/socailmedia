@@ -153,7 +153,7 @@ public class ExploreService {
     // ========================================================================
 
     public List<ExploreReelDto> trendingReels(int limit) {
-        List<Reel> rows = reels.findTrending(null, PageRequest.of(0, Math.max(1, limit)));
+        List<Reel> rows = reels.findTrending(PageRequest.of(0, Math.max(1, limit)));
         if (rows.isEmpty()) return List.of();
         Map<Long, User> creatorMap = mapUsers(
                 rows.stream().map(Reel::getUserId).toList());

@@ -12,14 +12,37 @@ import java.util.Optional;
 
 public interface LiveStreamRepository extends JpaRepository<LiveStream, Long> {
 
-    /** Most engaging streams happening right now — ordered by current viewer count desc. */
+    /** Most engaging streams happening right now — ordered by current viewer count desc.
+     *  PostgreSQL-safe: no nullable parameters in query.
+     */
     @Query("""
            SELECT s FROM LiveStream s
             WHERE s.state = 'LIVE'
-              AND (:category IS NULL OR s.category = :category)
             ORDER BY s.peakViewers DESC, s.startedAt DESC
            """)
-    Page<LiveStream> trending(@Param("category") String category, Pageable pageable);
+    Page<LiveStream> trending(Pageable pageable);
+
+    /** Most engaging streams by category — ordered by current viewer count desc.
+     *  PostgreSQL-safe: explicit non-null category parameter.
+     */
+    @Query("""
+           SELECT s FROM LiveStream s
+            WHERE s.state = 'LIVE'
+              AND s.category = :category
+            ORDER BY s.peakViewers DESC, s.startedAt DESC
+           """)
+    Page<LiveStream> trendingByCategory(@Param("category") String category, Pageable pageable);
+
+    /**
+     * Delegate method that routes to the appropriate query based on category presence.
+     * PostgreSQL-safe: handles null category in Java, not in SQL.
+     */
+    default Page<LiveStream> trendingWithCategory(String category, Pageable pageable) {
+        if (category == null || category.isBlank()) {
+            return trending(pageable);
+        }
+        return trendingByCategory(category, pageable);
+    }
 
     /** Live streams from creators followed by a given user. */
     @Query("""

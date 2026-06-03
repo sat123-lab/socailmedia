@@ -148,7 +148,7 @@ public class LiveStreamService {
     @Transactional(readOnly = true)
     public List<LiveStreamDto> trending(String category, int limit) {
         Pageable page = PageRequest.of(0, Math.min(50, Math.max(1, limit)));
-        Page<LiveStream> p = streamRepo.trending(category, page);
+        Page<LiveStream> p = streamRepo.trendingWithCategory(category, page);
         return p.stream()
                 .map(s -> LiveStreamDto.summary(s, currentViewerCount(s.getId())))
                 .collect(Collectors.toList());
@@ -262,7 +262,7 @@ public class LiveStreamService {
 
             // Push a fresh count for every still-live stream — cheap because
             // we only count currently-live rooms, which is a small set.
-            for (LiveStream s : streamRepo.trending(null, PageRequest.of(0, 50))) {
+            for (LiveStream s : streamRepo.trending(PageRequest.of(0, 50))) {
                 int count = currentViewerCount(s.getId());
                 bumpPeakIfNeeded(s);
                 realtime.toRoom("live-" + s.getId(), "live.viewers",

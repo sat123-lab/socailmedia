@@ -15,27 +15,76 @@ public interface ReelRepository extends JpaRepository<Reel, Long> {
 
     /**
      * Trending reels query. Pull a window of recent reels and rank by
-     * {@code trendingScore} (precomputed). The cursor is the
-     * {@code createdAt} of the last row from the previous page.
+     * {@code trendingScore} (precomputed).
+     * PostgreSQL-safe: no nullable parameters in query.
      */
     @Query("""
            SELECT r FROM Reel r
            WHERE r.deleted = false
              AND r.visibility = 'PUBLIC'
-             AND (:cursorTs IS NULL OR r.createdAt < :cursorTs)
            ORDER BY r.trendingScore DESC, r.createdAt DESC
            """)
-    List<Reel> findTrending(@Param("cursorTs") LocalDateTime cursorTs, Pageable pageable);
+    List<Reel> findTrending(Pageable pageable);
 
-    /** Chronological feed (Following/All) used by the simple For-You fallback. */
+    /**
+     * Trending reels query with cursor pagination.
+     * PostgreSQL-safe: explicit non-null cursor parameter.
+     */
     @Query("""
            SELECT r FROM Reel r
            WHERE r.deleted = false
              AND r.visibility = 'PUBLIC'
-             AND (:cursorTs IS NULL OR r.createdAt < :cursorTs)
+             AND r.createdAt < :cursorTs
+           ORDER BY r.trendingScore DESC, r.createdAt DESC
+           """)
+    List<Reel> findTrendingBefore(@Param("cursorTs") LocalDateTime cursorTs, Pageable pageable);
+
+    /**
+     * Chronological feed (Following/All) used by the simple For-You fallback.
+     * PostgreSQL-safe: no nullable parameters in query.
+     */
+    @Query("""
+           SELECT r FROM Reel r
+           WHERE r.deleted = false
+             AND r.visibility = 'PUBLIC'
            ORDER BY r.createdAt DESC
            """)
-    List<Reel> findRecent(@Param("cursorTs") LocalDateTime cursorTs, Pageable pageable);
+    List<Reel> findRecent(Pageable pageable);
+
+    /**
+     * Chronological feed with cursor pagination.
+     * PostgreSQL-safe: explicit non-null cursor parameter.
+     */
+    @Query("""
+           SELECT r FROM Reel r
+           WHERE r.deleted = false
+             AND r.visibility = 'PUBLIC'
+             AND r.createdAt < :cursorTs
+           ORDER BY r.createdAt DESC
+           """)
+    List<Reel> findRecentBefore(@Param("cursorTs") LocalDateTime cursorTs, Pageable pageable);
+
+    /**
+     * Delegate method that routes to the appropriate query based on cursor presence.
+     * PostgreSQL-safe: handles null cursor in Java, not in SQL.
+     */
+    default List<Reel> findTrendingWithCursor(LocalDateTime cursorTs, Pageable pageable) {
+        if (cursorTs == null) {
+            return findTrending(pageable);
+        }
+        return findTrendingBefore(cursorTs, pageable);
+    }
+
+    /**
+     * Delegate method that routes to the appropriate query based on cursor presence.
+     * PostgreSQL-safe: handles null cursor in Java, not in SQL.
+     */
+    default List<Reel> findRecentWithCursor(LocalDateTime cursorTs, Pageable pageable) {
+        if (cursorTs == null) {
+            return findRecent(pageable);
+        }
+        return findRecentBefore(cursorTs, pageable);
+    }
 
     /** Reels by a single creator (profile grid). */
     @Query("""

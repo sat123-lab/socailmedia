@@ -95,14 +95,14 @@ public class ReelService {
             // Pull a candidate pool wider than one page so the ranker
             // has room to actually rerank meaningfully.
             int poolSize = Math.min(120, (pageSize + 1) * 4);
-            List<Reel> pool = reels.findRecent(cursorTs, PageRequest.of(0, poolSize));
+            List<Reel> pool = reels.findRecentWithCursor(cursorTs, PageRequest.of(0, poolSize));
             page = recommendations.rankReels(viewer, pool);
             // Truncate after ranking — keep one extra for the hasMore probe.
             if (page.size() > pageSize + 1) page = page.subList(0, pageSize + 1);
         } else if ("TRENDING".equalsIgnoreCase(ranking)) {
-            page = reels.findTrending(cursorTs, PageRequest.of(0, pageSize + 1));
+            page = reels.findTrendingWithCursor(cursorTs, PageRequest.of(0, pageSize + 1));
         } else {
-            page = reels.findRecent(cursorTs, PageRequest.of(0, pageSize + 1));
+            page = reels.findRecentWithCursor(cursorTs, PageRequest.of(0, pageSize + 1));
         }
 
         boolean hasMore = page.size() > pageSize;
@@ -263,7 +263,7 @@ public class ReelService {
     @Transactional
     public void recomputeTrendingScores() {
         try {
-            List<Reel> recent = reels.findRecent(null, PageRequest.of(0, 5000));
+            List<Reel> recent = reels.findRecent(PageRequest.of(0, 5000));
             long nowEpoch = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC);
             for (Reel r : recent) {
                 double ageHours = Math.max(1.0,
