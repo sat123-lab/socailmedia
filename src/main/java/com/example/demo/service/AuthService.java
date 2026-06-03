@@ -19,6 +19,7 @@ import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseAuthException;
 import com.google.firebase.auth.FirebaseToken;
 import lombok.RequiredArgsConstructor;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -66,8 +67,8 @@ public class AuthService {
      */
     public String register(RegisterRequest request, String ipAddress,
                             String userAgent, String deviceId) {
-        if (request.getEmail() != null &&
-                userRepository.existsByEmail(request.getEmail())) {
+        String email = request.getEmail() == null ? null : request.getEmail().trim().toLowerCase();
+        if (email != null && userRepository.existsByEmail(email)) {
             throw new RuntimeException("Email already registered");
         }
         if (request.getPhone() != null && !request.getPhone().isBlank() &&
@@ -76,12 +77,12 @@ public class AuthService {
         }
 
         User user = User.builder()
-                .name(request.getName())
-                .email(request.getEmail())
-                .phone(request.getPhone())
-                .password(passwordEncoder.encode(request.getPassword()))
-                .authProvider(provider(request.getAuthProvider(), "EMAIL"))
-                .build();
+            .name(request.getName())
+            .email(email)
+            .phone(request.getPhone())
+            .password(passwordEncoder.encode(request.getPassword()))
+            .authProvider(provider(request.getAuthProvider(), "EMAIL"))
+            .build();
 
         user = userRepository.save(user);
         attributeReferral(request.getReferralCode(), user, ipAddress,
@@ -100,7 +101,8 @@ public class AuthService {
                     "Too many failed attempts. Try again in a few minutes.");
         }
 
-        User user = userRepository.findByEmail(request.getEmail()).orElse(null);
+        // Lookup by normalized email to avoid case / whitespace mismatch
+        User user = userRepository.findByEmail(identifier).orElse(null);
         if (user == null) {
             bruteForce.recordFailure(identifier);
             auditLog.record(AuditLogService.LOGIN_FAILURE, null, identifier + " · unknown user");
@@ -261,26 +263,52 @@ public class AuthService {
         if (request.getIdToken() == null || request.getIdToken().isBlank()) {
             throw new RuntimeException("Firebase ID token is required");
         }
-        if (FirebaseApp.getApps().isEmpty()) {
-            throw new RuntimeException(
-                    "Firebase is not configured on the server. " +
-                            "Add the service-account JSON and restart."
-            );
-        }
+        // Extract claims either via the Admin SDK (preferred) or via
+        // Google's tokeninfo endpoint as a best-effort fallback when the
+        // service-account JSON isn't present on the server (useful for
+        // quick dev deployments). The fallback validates the id_token and
+        // extracts the same fields we need to continue.
+        String uid;
+        String email;
+        String phoneClaim = null;
+        String providerId = null;
+        String picture = null;
+        String displayName = null;
 
-        FirebaseToken decoded;
-        try {
-            decoded = FirebaseAuth.getInstance().verifyIdToken(request.getIdToken());
-        } catch (FirebaseAuthException e) {
-            throw new RuntimeException("Invalid Firebase token: " + e.getMessage());
+        if (!FirebaseApp.getApps().isEmpty()) {
+            FirebaseToken decoded;
+            try {
+                decoded = FirebaseAuth.getInstance().verifyIdToken(request.getIdToken());
+            } catch (FirebaseAuthException e) {
+                throw new RuntimeException("Invalid Firebase token: " + e.getMessage());
+            }
+            uid = decoded.getUid();
+            email = lower(decoded.getEmail());
+            phoneClaim = stringClaim(decoded, "phone_number");
+            providerId = stringClaim(decoded, "sign_in_provider");
+            picture = decoded.getPicture();
+            displayName = displayName(decoded.getName(), request.getName(), email, phoneClaim);
+        } else {
+            // Fallback: call Google's tokeninfo endpoint to validate the ID token
+            try {
+                java.net.URL url = new java.net.URL(
+                        "https://oauth2.googleapis.com/tokeninfo?id_token=" +
+                                java.net.URLEncoder.encode(request.getIdToken(), java.nio.charset.StandardCharsets.UTF_8)
+                );
+                try (java.io.InputStream is = url.openStream()) {
+                    ObjectMapper om = new ObjectMapper();
+                    @SuppressWarnings("unchecked")
+                    java.util.Map<String, Object> map = om.readValue(is, java.util.Map.class);
+                    uid = (String) map.get("sub");
+                    email = lower((String) map.get("email"));
+                    picture = (String) map.get("picture");
+                    displayName = displayName((String) map.get("name"), request.getName(), email, null);
+                    // tokeninfo doesn't provide sign_in_provider; leave providerId null
+                }
+            } catch (Exception e) {
+                throw new RuntimeException("Invalid Firebase token: " + e.getMessage());
+            }
         }
-
-        String uid = decoded.getUid();
-        String email = lower(decoded.getEmail());
-        String phoneClaim = stringClaim(decoded, "phone_number");
-        String providerId = stringClaim(decoded, "sign_in_provider");
-        String picture = decoded.getPicture();
-        String displayName = displayName(decoded.getName(), request.getName(), email, phoneClaim);
 
         User user = findExistingUser(uid, email, phoneClaim);
         boolean isNewUser = user == null;
@@ -370,8 +398,11 @@ public class AuthService {
     }
 
     private User findExistingUser(String uid, String email, String phone) {
-        User user = userRepository.findByEmail(email == null ? "" : email).orElse(null);
-        if (user != null) return user;
+        User user = null;
+        if (email != null && !email.isBlank()) {
+            user = userRepository.findByEmail(email).orElse(null);
+            if (user != null) return user;
+        }
         if (phone != null && !phone.isBlank()) {
             user = userRepository.findByPhone(phone).orElse(null);
             if (user != null) return user;
