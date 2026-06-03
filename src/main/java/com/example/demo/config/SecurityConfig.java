@@ -58,6 +58,7 @@ public class SecurityConfig {
 
                         // Public endpoints
                         .requestMatchers(
+                                "/api/auth/**",
                                 "/auth/**",
                                 "/security/refresh",
                                 "/upload/**",
@@ -69,6 +70,13 @@ public class SecurityConfig {
                                 "/ws/**",
                                 "/ws-native/**",
                                 "/media/serve/**",
+                                // Swagger UI and API docs
+                                "/swagger-ui/**",
+                                "/v3/api-docs/**",
+                                "/swagger-ui.html",
+                                "/webjars/swagger-ui/**",
+                                // Actuator health endpoints
+                                "/actuator/health/**",
                                 "/actuator/health",
                                 "/actuator/info",
                                 // Anonymous referral landing endpoints — clicks
