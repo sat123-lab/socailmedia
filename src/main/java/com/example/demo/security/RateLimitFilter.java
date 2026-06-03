@@ -77,7 +77,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
     private static String routeGroup(String uri) {
         if (uri == null) return "api";
-        if (uri.startsWith("/auth")) return "auth";
+        if (uri.startsWith("/api/auth") || uri.startsWith("/auth")) return "auth";
         if (uri.startsWith("/upload")) return "upload";
         return "api";
     }
